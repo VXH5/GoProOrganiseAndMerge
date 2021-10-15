@@ -59,3 +59,6 @@ Allow running of Powershell scripts.
 e.g. - powershell.exe -ExecutionPolicy UnRestricted
 
 See - https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.security/set-executionpolicy?view=powershell-7.1
+
+## About
+Started with https://github.com/alexandrosk0/GorpoMergeAndEncode and edited over the years to work with a Hero9 and other tweaks.
