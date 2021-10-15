@@ -1,0 +1,2 @@
+"Event","RoughCoordinate"
+"SampleLocation","50.63,3.99"
