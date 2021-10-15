@@ -9,7 +9,7 @@ PowerShell Script to Automatically Name, Organise, and Merge GoPro Videos.
 - Merges together files if they are from the same recording session
 - Creates a backup of original, un-merged files to be kept for 60 days
 
-## Note. Files often do not contain GPS location data, see below for an FAQ on how to get GPS added -
+Note. Files often do not contain GPS location data, see below for an FAQ on how to get GPS added -
 https://community.gopro.com/t5/GoPro-Telemetry-GPS-overlays/GoPro-GPS-not-working-Performance-stickers-and-telemetry-FAQ/gpm-p/419554
 
 Made for Hero 6 Black and newer's naming convention. Tested with Hero 9 Black.
@@ -55,5 +55,7 @@ Location of Log Files.
 
 ## How to Run
 Allow running of Powershell scripts.
+
 e.g. - powershell.exe -ExecutionPolicy UnRestricted
+
 See - https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.security/set-executionpolicy?view=powershell-7.1
