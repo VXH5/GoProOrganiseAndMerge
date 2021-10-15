@@ -6,10 +6,10 @@ PowerShell Script to Automatically Name, Organise, and Merge GoPro Videos.
 - Scans files on SD card. If they all share the same GPS Location, look up in Locations.txt for the name of the location, and use that for renaming.
 - Ask for a Location to be used for renaming.
 - Renames files based on the date of the recording, and location.
-- Merges together files if they are from the same recording session
-- Creates a backup of original, un-merged files to be kept for 60 days
+- Merges together files if they are from the same recording session.
+- Creates a backup of original, un-merged files to be kept for 60 days.
 
-Note. Files often do not contain GPS location data, see below for an FAQ on how to get GPS added -
+Note. Files often do not contain GPS location data, see below for an FAQ on how GPS is added -
 https://community.gopro.com/t5/GoPro-Telemetry-GPS-overlays/GoPro-GPS-not-working-Performance-stickers-and-telemetry-FAQ/gpm-p/419554
 
 Made for Hero 6 Black and newer's naming convention. Tested with Hero 9 Black.
