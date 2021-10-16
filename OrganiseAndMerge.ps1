@@ -7,6 +7,21 @@ $LocationsCSV = "C:\Locations.txt"
 $FFProbe = "C:\ffprobe.exe"
 $LogLocation = "C:\Backup\Log\" + (Get-Date -Format yyy-MM-dd) + ".txt"
 
+#If There are no files in Source; Exit
+if (!(Test-Path -Path $GoProSource)) {
+    Write-Host 'No Files to Import. Press any key to exit'
+    $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown');
+    Exit
+    else {
+        $AllSourceFiles = (Get-ChildItem -Filter *.mp4 -Path $GoProSource)
+        if ($AllSourceFiles.length -eq 0) {
+            Write-Host 'No Files to Import. Press any key to exit'
+            $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown');
+            Exit
+        }
+    }
+}
+
 Start-Transcript -Path $LogLocation -Append
 
 #If all files have the same date, use that, else ask
@@ -42,6 +57,7 @@ ForEach ($IndivGPSFile In $GPSfiles) {
         }
 
      }
+
 }
 
 if($ArrayOfEvents){
