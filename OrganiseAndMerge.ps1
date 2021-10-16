@@ -12,15 +12,16 @@ if (!(Test-Path -Path $GoProSource)) {
     Write-Host 'No Files to Import. Press any key to exit'
     $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown');
     Exit
+    }
     else {
         $AllSourceFiles = (Get-ChildItem -Filter *.mp4 -Path $GoProSource)
+        Write-Host $AllSourceFiles
         if ($AllSourceFiles.length -eq 0) {
             Write-Host 'No Files to Import. Press any key to exit'
             $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown');
             Exit
         }
     }
-}
 
 Start-Transcript -Path $LogLocation -Append
 
