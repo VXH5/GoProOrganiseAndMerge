@@ -15,7 +15,6 @@ if (!(Test-Path -Path $GoProSource)) {
     }
     else {
         $AllSourceFiles = (Get-ChildItem -Filter *.mp4 -Path $GoProSource)
-        Write-Host $AllSourceFiles
         if ($AllSourceFiles.length -eq 0) {
             Write-Host 'No Files to Import. Press any key to exit'
             $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown');
