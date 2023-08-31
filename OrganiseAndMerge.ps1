@@ -1,3 +1,8 @@
+param (
+  [switch]$YouTubeUpload = $True
+)
+
+
 #Define Variables
 $GoProSource = "E:\DCIM\100GOPRO\"
 $SourceFolder = "C:\Source"
@@ -5,24 +10,42 @@ $DestinationDir = "C:\Destination"
 $BackupDir = "C:\Backup\"
 $LocationsCSV = "C:\Locations.txt"
 $FFProbe = "C:\ffprobe.exe"
-$LogLocation = "C:\Backup\Log\" + (Get-Date -Format yyy-MM-dd) + ".txt"
+$Upload = "C:\Upload\"
+$twilioSid = "XXXXXXXXXXXXXXXXXXXXXXX"
+$twilioToken = "XXXXXXXXXXXXXXXXXXXXXXX"
+$twilioFromNumber = "+XXXXXXXXXXXXXXXXXXXXXXX"
+$toNumber = "+XXXXXXXXXXXXXXXXXXXXXXX"
+$slackURI = "https://hooks.slack.com/services/XXXXXXXXXXXXXXXXXXXXXXX/XXXXXXXXXXXXXXXXXXXXXXX/XXXXXXXXXXXXXXXXXXXXXXX"
+$url = "https://api.twilio.com/2010-04-01/Accounts/$twilioSid/Messages.json"
+
+$LogLocation = "C:\Log\" + (Get-Date -Format yyyy-MM-dd) + ".txt"
 
 #If There are no files in Source; Exit
 if (!(Test-Path -Path $GoProSource)) {
-    Write-Host 'No Files to Import. Press any key to exit'
-    $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown');
+    Write-Host 'SD Card Not Mounted, Ending'
     Exit
     }
     else {
         $AllSourceFiles = (Get-ChildItem -Filter *.mp4 -Path $GoProSource)
         if ($AllSourceFiles.length -eq 0) {
-            Write-Host 'No Files to Import. Press any key to exit'
-            $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown');
+            Write-Host 'SD Card Mounted, no mp4 files for import'
             Exit
         }
     }
 
 Start-Transcript -Path $LogLocation -Append
+
+# Send Slack message saying import has started
+$payload = @"
+    {
+    "text": "Starting GoPro Import"
+    }
+"@
+Invoke-RestMethod -Uri $slackURI -Method Post -Body $Payload | Out-Null
+
+# Create a Twilio credential object for HTTP basic auth
+$twilioTokenSecure = $twilioToken | ConvertTo-SecureString -asPlainText -Force
+$credential = New-Object System.Management.Automation.PSCredential($twilioSid, $twilioTokenSecure)
 
 #If all files have the same date, use that, else ask
 $OriginalFiles = Get-ChildItem -Path $GoProSource
@@ -35,7 +58,7 @@ if (($Dates | Select -Unique).Count -eq 1) {
     }
 else {
     #Ask for Date
-    $Date = Read-Host 'Date of Race Meeting'
+    $Date = Read-Host 'Date of Files'
     }
 
 #If all files have the same GPS location, look up based on Locations.txt, if no match, add to txt. If no gps, ask
@@ -57,25 +80,105 @@ ForEach ($IndivGPSFile In $GPSfiles) {
         }
 
      }
-
 }
 
 if($ArrayOfEvents){
-    
 
-if (($ArrayOfEvents | Select -Unique).Count -eq 1) {
-    $Location = $ArrayOfEvents | Select-Object -first 1
+    if (($ArrayOfEvents | Select -Unique).Count -eq 1) {
+        $Location = $ArrayOfEvents | Select-Object -first 1
+        }
+    else {
+        # Make API request, selecting JSON properties from response
+        $params = @{ To = $toNumber; From = $twilioFromNumber; Body = "Respond With Name" }
+        Invoke-WebRequest $url -Method Post -Credential $credential -Body $params -UseBasicParsing |
+        ConvertFrom-Json | Select sid, body
+        # Send Slack update
+        $payload = @"
+            {
+            "text": "Waiting for SMS with Location"
+            }
+"@
+        Invoke-RestMethod -Uri $slackURI -Method Post -Body $Payload | Out-Null
+
+        # Wait 60 Seconds
+        sleep 60
+
+        # Waiting for new SMS within the last 2 hours
+        while ($true) {
+            Write-Host "Checking for new messages"
+            $response = Invoke-RestMethod -Method GET -Uri $url -Credential $Credential
+            # Formating response to only include useful info
+            $messages = $response.messages | Select date_updated, from, to, body | where-object -Property 'to' -like $twilioFromNumber | where-object -Property 'from' -like $toNumber
+            $latestMessage = $messages | Select-Object -first 1 
+            # Remove timezone from date recieved, and convert to date
+            $latestMessage.date_updated = $latestMessage.date_updated.Substring(0,$latestMessage.date_updated.Length-6)
+            $latestMessage.date_updated = [datetime]::parseexact($latestMessage.date_updated, "ddd, dd MMM yyyy HH':'mm':'ss", $null)
+            # If message is within last 2 hours (UTC time), mark as location after removing new lines/spaces and end
+            if ($latestMessage.date_updated -gt ( Get-Date).AddHours(-2)) {
+                $Location = $latestMessage.body
+                $Location = $Location -replace '(^\s+|\s+$|`n)','' -replace '\s+',''
+                Write-Host "Location is " $Location
+
+                # Send Slack update
+                $payload = @"
+                {
+                "text": "SMS Location Recieved - $Location"
+                }
+"@
+                Invoke-RestMethod -Uri $slackURI -Method Post -Body $Payload | Out-Null
+
+                break
+                }
+            else {
+                Write-Host "Waiting for 60 seconds for text message"
+                sleep 60
+                }
+            }
+        Add-Content -Path $LocationsCSV -Value """$Location"",""$RoughCoordinate"""
+        }
     }
 else {
     #Ask for Location
-    $Location = Read-Host 'Name of Race Meeting'
-    Add-Content -Path $LocationsCSV -Value """$Location"",""$RoughCoordinate"""
+    # Send Message via Twilio
+    # Make API request, selecting JSON properties from response
+    $params = @{ To = $toNumber; From = $twilioFromNumber; Body = "Respond With Name" }
+    Invoke-WebRequest $url -Method Post -Credential $credential -Body $params -UseBasicParsing |
+    ConvertFrom-Json | Select sid, body
+    # Wait 60 Seconds
+    sleep 60
+
+    # Waiting for new SMS within the last hour
+    while ($true) {
+        Write-Host "Checking for new messages"
+        $response = Invoke-RestMethod -Method GET -Uri $url -Credential $Credential
+        # Formating response to only include useful info
+        $messages = $response.messages | Select date_updated, from, to, body | where-object -Property 'to' -like $twilioFromNumber | where-object -Property 'from' -like $toNumber
+        $latestMessage = $messages | Select-Object -first 1 
+        # Remove timezone from date recieved, and convert to date
+        $latestMessage.date_updated = $latestMessage.date_updated.Substring(0,$latestMessage.date_updated.Length-6)
+        $latestMessage.date_updated = [datetime]::parseexact($latestMessage.date_updated, "ddd, dd MMM yyyy HH':'mm':'ss", $null)
+        # If message is within last 2 hours (UTC time), mark as location after removing new lines/spaces and end
+        if ($latestMessage.date_updated -gt ( Get-Date).AddHours(-2)) {
+            $Location = $latestMessage.body
+            $Location = $Location -replace '(^\s+|\s+$|`n)','' -replace '\s+',''
+            Write-Host "Location is " $Location
+
+            # Send Slack update
+            $payload = @"
+            {
+            "text": "SMS Location Recieved - $Location"
+            }
+"@
+            Invoke-RestMethod -Uri $slackURI -Method Post -Body $Payload | Out-Null
+
+            break
+        }
+        else {
+        Write-Host "Waiting for 60 seconds"
+        sleep 60
+        }
     }
 }
-else{
-    #Ask for Location
-    $Location = Read-Host 'Name of Race Meeting'
-    }
 
 #Copy Files from USB
 if (Test-Path -Path $GoProSource) {
@@ -177,6 +280,26 @@ else {
     "No Folders found to process in directory " + $Destination
     }
 
+# Open File Explorer to new files if Firefox/VLC are not running
+if (!(Get-Process | ? {$_.ProcessName -like "*Firefox*"})) {
+    if (!(Get-Process | ? {$_.ProcessName -like "*VLC*"})) {
+        Write-Host "Opening File Explorer"
+        start-process explorer -WindowStyle Maximized -ArgumentList $Destination
+        }
+    }
+
+# Send message saying videos are ready
+$params = @{ To = $toNumber; From = $twilioFromNumber; Body = "Videos are now available. SD Card can be removed" }
+Invoke-WebRequest $url -Method Post -Credential $credential -Body $params -UseBasicParsing |
+ConvertFrom-Json | Select sid, body
+
+# Send Slack update
+$payload = @"
+{
+"text": "Videos are now available. SD Card can be removed"
+}
+"@
+Invoke-RestMethod -Uri $slackURI -Method Post -Body $Payload | Out-Null
 
 #Create New folder in the backupLocation with todays date if it doesn't exist
 Write-Host "Making Backup of Videos"
@@ -210,5 +333,74 @@ Get-ChildItem $BackupDir -Recurse -Force -ea 0 |
 ForEach-Object {
     $_ | del -Force -Recurse  | Out-Null
     }
+
+#Upload to YouTube
+
+if ($YouTubeUpload)
+{
+    $FolderName = Split-Path $Destination -Leaf
+    Set-Location $Destination
+
+    #Convert Date to UK Style
+    $Date = $FolderName.Substring(0,10)
+    $Date = [DateTime]::ParseExact($Date, 'yyyy-MM-dd', $null)
+    $DateUK = $Date.ToString('dd-MM-yyyy')
+
+    #Get Location from Folder name
+    $Location = $UploadFile.Name.Substring(11)
+    $Location = $Location.Substring(0,$Location.Length-16)
+
+    #Create metadat json file containing Playlist Name
+    $PlaylistName = $DateUK + " - " + $Location
+    (Get-Content "$Upload\template.json") -Replace 'Template', $PlaylistName | Set-Content "$Upload\data.json"
+
+    $AllUploadFiles = (Get-ChildItem -Path $Destination)
+    ForEach ($UploadFile in $AllUploadFiles)
+        {
+        if($UploadFile -like '*Merged*') {
+            $LocationName = $UploadFile.Name.Substring(11)
+            $LocationName = $LocationName.Substring(0,$LocationName.Length-11)
+        } else {
+            $LocationName = $UploadFile.Name.Substring(11)
+            $LocationName = $LocationName.Substring(0,$LocationName.Length-4)
+        }
+
+        #Set Upload File Name
+        $UploadName = $DateUK + " - " + $LocationName
+        write-host "Uploading - " $UploadName "To - " $PlaylistName
+
+        #Upload
+        Set-Location $Upload
+        ./youtubeuploader_windows_amd64.exe `
+        -filename $UploadFile.FullName `
+        -title $UploadName `
+        -description $UploadName `
+        -secrets "$Upload\client_secrets.json" `
+        -metaJSON "$Upload\data.json" `
+        -ratelimit 5000 -limitBetween 08:00-01:00
+
+        # Send Slack update
+        $payload = @"
+        {
+        "text": "Uploading $UploadName"
+        }
+"@
+        Invoke-RestMethod -Uri $slackURI -Method Post -Body $Payload | Out-Null
+        }
+}
+
+# Send message saying videos are ready
+$params = @{ To = $toNumber; From = $twilioFromNumber; Body = "Videos are now available on YouTube" }
+Invoke-WebRequest $url -Method Post -Credential $credential -Body $params -UseBasicParsing |
+ConvertFrom-Json | Select sid, body
+
+# Send Slack update
+$payload = @"
+{
+"text": "Videos are now available Youtube. Script Complete"
+}
+"@
+Invoke-RestMethod -Uri $slackURI -Method Post -Body $Payload | Out-Null
+
 
 Stop-Transcript 
